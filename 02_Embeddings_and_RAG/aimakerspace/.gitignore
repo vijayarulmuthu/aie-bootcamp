@@ -1,0 +1,6 @@
+data_files/
+rag_simple_db/vectors/**/*
+rag_simple_db/results/**/*
+rag_faiss_db/indices/**/*
+rag_faiss_db/results/**/*
+.env
