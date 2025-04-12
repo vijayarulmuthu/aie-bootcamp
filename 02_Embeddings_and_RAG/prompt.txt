@@ -1,0 +1,728 @@
+File: ./aimakerspace/openai_utils/chatmodel.py
+from openai import OpenAI
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+
+class ChatOpenAI:
+    def __init__(self, model_name: str = "gpt-4o-mini"):
+        self.model_name = model_name
+        self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        if self.openai_api_key is None:
+            raise ValueError("OPENAI_API_KEY is not set")
+
+    def run(self, messages, text_only: bool = True, **kwargs):
+        if not isinstance(messages, list):
+            raise ValueError("messages must be a list")
+
+        client = OpenAI()
+        response = client.chat.completions.create(
+            model=self.model_name, messages=messages, **kwargs
+        )
+
+        if text_only:
+            return response.choices[0].message.content
+
+        return response
+
+
+
+File: ./aimakerspace/openai_utils/embedding.py
+from dotenv import load_dotenv
+from openai import AsyncOpenAI, OpenAI
+import openai
+from typing import List
+import os
+import asyncio
+
+
+class EmbeddingModel:
+    def __init__(self, embeddings_model_name: str = "text-embedding-3-small"):
+        load_dotenv()
+        self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        self.async_client = AsyncOpenAI()
+        self.client = OpenAI()
+
+        if self.openai_api_key is None:
+            raise ValueError(
+                "OPENAI_API_KEY environment variable is not set. Please set it to your OpenAI API key."
+            )
+        openai.api_key = self.openai_api_key
+        self.embeddings_model_name = embeddings_model_name
+
+    async def async_get_embeddings(self, list_of_text: List[str]) -> List[List[float]]:
+        batch_size = 1024
+        batches = [list_of_text[i:i + batch_size] for i in range(0, len(list_of_text), batch_size)]
+        
+        async def process_batch(batch):
+            embedding_response = await self.async_client.embeddings.create(
+                input=batch, model=self.embeddings_model_name
+            )
+            return [embeddings.embedding for embeddings in embedding_response.data]
+        
+        # Use asyncio.gather to process all batches concurrently
+        results = await asyncio.gather(*[process_batch(batch) for batch in batches])
+        
+        # Flatten the results
+        return [embedding for batch_result in results for embedding in batch_result]
+
+    async def async_get_embedding(self, text: str) -> List[float]:
+        embedding = await self.async_client.embeddings.create(
+            input=text, model=self.embeddings_model_name
+        )
+
+        return embedding.data[0].embedding
+
+    def get_embeddings(self, list_of_text: List[str]) -> List[List[float]]:
+        embedding_response = self.client.embeddings.create(
+            input=list_of_text, model=self.embeddings_model_name
+        )
+
+        return [embeddings.embedding for embeddings in embedding_response.data]
+
+    def get_embedding(self, text: str) -> List[float]:
+        embedding = self.client.embeddings.create(
+            input=text, model=self.embeddings_model_name
+        )
+
+        return embedding.data[0].embedding
+
+
+if __name__ == "__main__":
+    embedding_model = EmbeddingModel()
+    print(asyncio.run(embedding_model.async_get_embedding("Hello, world!")))
+    print(
+        asyncio.run(
+            embedding_model.async_get_embeddings(["Hello, world!", "Goodbye, world!"])
+        )
+    )
+
+
+
+File: ./aimakerspace/openai_utils/prompts.py
+import re
+
+
+class BasePrompt:
+    def __init__(self, prompt):
+        """
+        Initializes the BasePrompt object with a prompt template.
+
+        :param prompt: A string that can contain placeholders within curly braces
+        """
+        self.prompt = prompt
+        self._pattern = re.compile(r"\{([^}]+)\}")
+
+    def format_prompt(self, **kwargs):
+        """
+        Formats the prompt string using the keyword arguments provided.
+
+        :param kwargs: The values to substitute into the prompt string
+        :return: The formatted prompt string
+        """
+        matches = self._pattern.findall(self.prompt)
+        return self.prompt.format(**{match: kwargs.get(match, "") for match in matches})
+
+    def get_input_variables(self):
+        """
+        Gets the list of input variable names from the prompt string.
+
+        :return: List of input variable names
+        """
+        return self._pattern.findall(self.prompt)
+
+
+class RolePrompt(BasePrompt):
+    def __init__(self, prompt, role: str):
+        """
+        Initializes the RolePrompt object with a prompt template and a role.
+
+        :param prompt: A string that can contain placeholders within curly braces
+        :param role: The role for the message ('system', 'user', or 'assistant')
+        """
+        super().__init__(prompt)
+        self.role = role
+
+    def create_message(self, format=True, **kwargs):
+        """
+        Creates a message dictionary with a role and a formatted message.
+
+        :param kwargs: The values to substitute into the prompt string
+        :return: Dictionary containing the role and the formatted message
+        """
+        if format:
+            return {"role": self.role, "content": self.format_prompt(**kwargs)}
+        
+        return {"role": self.role, "content": self.prompt}
+
+
+class SystemRolePrompt(RolePrompt):
+    def __init__(self, prompt: str):
+        super().__init__(prompt, "system")
+
+
+class UserRolePrompt(RolePrompt):
+    def __init__(self, prompt: str):
+        super().__init__(prompt, "user")
+
+
+class AssistantRolePrompt(RolePrompt):
+    def __init__(self, prompt: str):
+        super().__init__(prompt, "assistant")
+
+
+if __name__ == "__main__":
+    prompt = BasePrompt("Hello {name}, you are {age} years old")
+    print(prompt.format_prompt(name="John", age=30))
+
+    prompt = SystemRolePrompt("Hello {name}, you are {age} years old")
+    print(prompt.create_message(name="John", age=30))
+    print(prompt.get_input_variables())
+
+
+
+File: ./aimakerspace/openai_utils/chatmodel.py
+from openai import OpenAI
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+
+class ChatOpenAI:
+    def __init__(self, model_name: str = "gpt-4o-mini"):
+        self.model_name = model_name
+        self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        if self.openai_api_key is None:
+            raise ValueError("OPENAI_API_KEY is not set")
+
+    def run(self, messages, text_only: bool = True, **kwargs):
+        if not isinstance(messages, list):
+            raise ValueError("messages must be a list")
+
+        client = OpenAI()
+        response = client.chat.completions.create(
+            model=self.model_name, messages=messages, **kwargs
+        )
+
+        if text_only:
+            return response.choices[0].message.content
+
+        return response
+
+
+
+File: ./aimakerspace/openai_utils/embedding.py
+from dotenv import load_dotenv
+from openai import AsyncOpenAI, OpenAI
+import openai
+from typing import List
+import os
+import asyncio
+
+
+class EmbeddingModel:
+    def __init__(self, embeddings_model_name: str = "text-embedding-3-small"):
+        load_dotenv()
+        self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        self.async_client = AsyncOpenAI()
+        self.client = OpenAI()
+
+        if self.openai_api_key is None:
+            raise ValueError(
+                "OPENAI_API_KEY environment variable is not set. Please set it to your OpenAI API key."
+            )
+        openai.api_key = self.openai_api_key
+        self.embeddings_model_name = embeddings_model_name
+
+    async def async_get_embeddings(self, list_of_text: List[str]) -> List[List[float]]:
+        batch_size = 1024
+        batches = [list_of_text[i:i + batch_size] for i in range(0, len(list_of_text), batch_size)]
+        
+        async def process_batch(batch):
+            embedding_response = await self.async_client.embeddings.create(
+                input=batch, model=self.embeddings_model_name
+            )
+            return [embeddings.embedding for embeddings in embedding_response.data]
+        
+        # Use asyncio.gather to process all batches concurrently
+        results = await asyncio.gather(*[process_batch(batch) for batch in batches])
+        
+        # Flatten the results
+        return [embedding for batch_result in results for embedding in batch_result]
+
+    async def async_get_embedding(self, text: str) -> List[float]:
+        embedding = await self.async_client.embeddings.create(
+            input=text, model=self.embeddings_model_name
+        )
+
+        return embedding.data[0].embedding
+
+    def get_embeddings(self, list_of_text: List[str]) -> List[List[float]]:
+        embedding_response = self.client.embeddings.create(
+            input=list_of_text, model=self.embeddings_model_name
+        )
+
+        return [embeddings.embedding for embeddings in embedding_response.data]
+
+    def get_embedding(self, text: str) -> List[float]:
+        embedding = self.client.embeddings.create(
+            input=text, model=self.embeddings_model_name
+        )
+
+        return embedding.data[0].embedding
+
+
+if __name__ == "__main__":
+    embedding_model = EmbeddingModel()
+    print(asyncio.run(embedding_model.async_get_embedding("Hello, world!")))
+    print(
+        asyncio.run(
+            embedding_model.async_get_embeddings(["Hello, world!", "Goodbye, world!"])
+        )
+    )
+
+
+
+File: ./aimakerspace/openai_utils/prompts.py
+import re
+
+
+class BasePrompt:
+    def __init__(self, prompt):
+        """
+        Initializes the BasePrompt object with a prompt template.
+
+        :param prompt: A string that can contain placeholders within curly braces
+        """
+        self.prompt = prompt
+        self._pattern = re.compile(r"\{([^}]+)\}")
+
+    def format_prompt(self, **kwargs):
+        """
+        Formats the prompt string using the keyword arguments provided.
+
+        :param kwargs: The values to substitute into the prompt string
+        :return: The formatted prompt string
+        """
+        matches = self._pattern.findall(self.prompt)
+        return self.prompt.format(**{match: kwargs.get(match, "") for match in matches})
+
+    def get_input_variables(self):
+        """
+        Gets the list of input variable names from the prompt string.
+
+        :return: List of input variable names
+        """
+        return self._pattern.findall(self.prompt)
+
+
+class RolePrompt(BasePrompt):
+    def __init__(self, prompt, role: str):
+        """
+        Initializes the RolePrompt object with a prompt template and a role.
+
+        :param prompt: A string that can contain placeholders within curly braces
+        :param role: The role for the message ('system', 'user', or 'assistant')
+        """
+        super().__init__(prompt)
+        self.role = role
+
+    def create_message(self, format=True, **kwargs):
+        """
+        Creates a message dictionary with a role and a formatted message.
+
+        :param kwargs: The values to substitute into the prompt string
+        :return: Dictionary containing the role and the formatted message
+        """
+        if format:
+            return {"role": self.role, "content": self.format_prompt(**kwargs)}
+        
+        return {"role": self.role, "content": self.prompt}
+
+
+class SystemRolePrompt(RolePrompt):
+    def __init__(self, prompt: str):
+        super().__init__(prompt, "system")
+
+
+class UserRolePrompt(RolePrompt):
+    def __init__(self, prompt: str):
+        super().__init__(prompt, "user")
+
+
+class AssistantRolePrompt(RolePrompt):
+    def __init__(self, prompt: str):
+        super().__init__(prompt, "assistant")
+
+
+if __name__ == "__main__":
+    prompt = BasePrompt("Hello {name}, you are {age} years old")
+    print(prompt.format_prompt(name="John", age=30))
+
+    prompt = SystemRolePrompt("Hello {name}, you are {age} years old")
+    print(prompt.create_message(name="John", age=30))
+    print(prompt.get_input_variables())
+
+
+
+File: ./aimakerspace/text_utils.py
+import os
+import tiktoken
+from typing import List
+
+
+class TextFileLoader:
+    def __init__(self, path: str, encoding: str = "utf-8"):
+        self.documents = []
+        self.path = path
+        self.encoding = encoding
+
+    def load(self):
+        if os.path.isdir(self.path):
+            self.load_directory()
+        elif os.path.isfile(self.path) and self.path.endswith(".txt"):
+            self.load_file()
+        else:
+            raise ValueError(
+                "Provided path is neither a valid directory nor a .txt file."
+            )
+
+    def load_file(self):
+        with open(self.path, "r", encoding=self.encoding) as f:
+            self.documents.append(f.read())
+
+    def load_directory(self):
+        for root, _, files in os.walk(self.path):
+            for file in files:
+                if file.endswith(".txt"):
+                    with open(
+                        os.path.join(root, file), "r", encoding=self.encoding
+                    ) as f:
+                        self.documents.append(f.read())
+
+    def load_documents(self):
+        self.load()
+        return self.documents
+
+
+class CharacterTextSplitter:
+    def __init__(
+        self,
+        chunk_size: int = 1000,
+        chunk_overlap: int = 200,
+    ):
+        assert (
+            chunk_size > chunk_overlap
+        ), "Chunk size must be greater than chunk overlap"
+
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+
+    def split(self, text: str) -> List[str]:
+        chunks = []
+        for i in range(0, len(text), self.chunk_size - self.chunk_overlap):
+            chunks.append(text[i : i + self.chunk_size])
+        return chunks
+
+    def split_texts(self, texts: List[str]) -> List[str]:
+        chunks = []
+        for text in texts:
+            chunks.extend(self.split(text))
+        return chunks
+
+
+class TokenTextSplitter:
+    def __init__(self, chunk_size: int = 300, chunk_overlap: int = 50, model_name="gpt-4o-mini"):
+        assert chunk_size > chunk_overlap, "Chunk size must be greater than overlap"
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+        self.encoder = tiktoken.encoding_for_model(model_name)
+
+    def split(self, text: str) -> List[str]:
+        tokens = self.encoder.encode(text)
+        chunks = []
+        for i in range(0, len(tokens), self.chunk_size - self.chunk_overlap):
+            chunk_tokens = tokens[i: i + self.chunk_size]
+            chunk_text = self.encoder.decode(chunk_tokens)
+            chunks.append(chunk_text)
+        return chunks
+
+    def split_texts(self, texts: List[str]) -> List[str]:
+        all_chunks = []
+        for text in texts:
+            all_chunks.extend(self.split(text))
+        return all_chunks
+
+
+if __name__ == "__main__":
+    loader = TextFileLoader("data/KingLear.txt")
+    loader.load()
+    splitter = CharacterTextSplitter()
+    chunks = splitter.split_texts(loader.documents)
+    print(len(chunks))
+    print(chunks[0])
+    print("--------")
+    print(chunks[1])
+    print("--------")
+    print(chunks[-2])
+    print("--------")
+    print(chunks[-1])
+
+
+
+File: ./aimakerspace/vectordatabase.py
+import os
+import re
+import asyncio
+import sqlite3
+import fitz  # PyMuPDF
+import pandas as pd
+import numpy as np
+
+from docx import Document
+from collections import defaultdict
+from typing import List, Tuple, Callable, Union
+from aimakerspace.openai_utils.embedding import EmbeddingModel
+from aimakerspace.text_utils import CharacterTextSplitter
+from aimakerspace.text_utils import TokenTextSplitter
+from tiktoken import encoding_for_model
+
+
+MIN_TOKENS = 5
+MIN_CHARS = 20
+
+def cosine_similarity(vector_a: np.array, vector_b: np.array) -> float:
+    dot_product = np.dot(vector_a, vector_b)
+    norm_a = np.linalg.norm(vector_a)
+    norm_b = np.linalg.norm(vector_b)
+
+    return dot_product / (norm_a * norm_b)
+
+
+class SimpleVectorDatabase:
+    def __init__(self, embedding_model: EmbeddingModel = None, sqlite_path: str = None):
+        self.vectors = defaultdict(np.array)
+        self.chunk_texts = {}  # key -> original chunk text
+        self.embedding_model = embedding_model or EmbeddingModel()
+
+        db_dir = os.path.dirname(sqlite_path)
+        if db_dir and not os.path.exists(db_dir):
+            os.makedirs(db_dir)
+
+    def is_valid_chunk(self, chunk: str) -> bool:
+        encoder = encoding_for_model("gpt-4o-mini")
+
+        return chunk.strip() and len(chunk.strip()) > MIN_CHARS and len(encoder.encode(chunk)) >= MIN_TOKENS
+
+    def _get_splitter(self, method: str):
+        if method == "Token":
+            return TokenTextSplitter()
+        return CharacterTextSplitter()
+
+    def _chunk_into_paragraphs(self, text: str, file_path: str = "", chunk_prefix: str = "") -> List[str]:
+        # Split by 2+ newlines (paragraphs), fallback to sentence if very short
+        raw_paragraphs = re.split(r"\n\s*\n", text)
+        cleaned_chunks = []
+
+        for idx, para in enumerate(raw_paragraphs):
+            clean_para = self._clean_text(para)
+            if len(clean_para.split()) > 5:  # skip very short lines
+                key = f"{os.path.basename(file_path)}::chunk_{idx}" if file_path else f"{chunk_prefix}::chunk_{idx}"
+                cleaned_chunks.append((key, clean_para))
+
+        return cleaned_chunks
+
+    def _clean_text(self, text: str) -> str:
+        # Remove unwanted control characters and extra whitespace
+        text = re.sub(r'[\x00-\x1F\x7F]', '', text)  # control chars
+        text = re.sub(r'\s+', ' ', text)             # collapse whitespace
+        return text.strip()
+
+    def _extract_pdf(self, file_path: str) -> str:
+        doc = fitz.open(file_path)
+        all_text = "\n\n".join(page.get_text() for page in doc)
+        return self._clean_text(all_text)
+
+    def _extract_docx(self, file_path: str) -> str:
+        doc = Document(file_path)
+        full_text = "\n\n".join(p.text for p in doc.paragraphs if p.text.strip())
+        return self._clean_text(full_text)
+
+    def _extract_csv(self, file_path: str) -> str:
+        df = pd.read_csv(file_path)
+        rows = [row.dropna().astype(str).str.cat(sep=", ") for _, row in df.iterrows()]
+        return self._clean_text("\n\n".join(rows))
+
+    def _extract_md(self, file_path: str) -> str:
+        with open(file_path, "r", encoding="utf-8") as f:
+            return self._clean_text(f.read())
+
+    def insert(self, key: str, vector: np.array) -> None:
+        self.vectors[key] = vector
+
+    def search(
+        self,
+        query_vector: np.array,
+        k: int,
+        distance_measure: Callable = cosine_similarity,
+    ) -> List[Tuple[str, float]]:
+        scores = [
+            (key, distance_measure(query_vector, vector))
+            for key, vector in self.vectors.items()
+        ]
+        return sorted(scores, key=lambda x: x[1], reverse=True)[:k]
+
+    def search_by_text(
+        self,
+        query_text: str,
+        k: int,
+        distance_measure: Callable = cosine_similarity,
+        return_as_text: bool = False,
+    ) -> List[Tuple[str, float]]:
+        query_vector = self.embedding_model.get_embedding(query_text)
+        results = self.search(query_vector, k, distance_measure)
+        return [result[0] for result in results] if return_as_text else results
+
+    def search_by_text_ex(
+        self,
+        query_text: str,
+        k: int,
+        distance_measure: Callable = cosine_similarity,
+        return_type: str = "similarity"  # or "vector", "text"
+    ) -> Union[List[str], List[Tuple[str, float]], List[np.array]]:
+        query_vector = self.embedding_model.get_embedding(query_text)
+        results = self.search(query_vector, k, distance_measure)
+
+        if return_type == "vector":
+            return [self.retrieve_from_key(key) for key, _ in results]
+        elif return_type == "text":
+            return [self.chunk_texts.get(key, "") for key, _ in results]
+
+        return results  # default: (key, similarity)
+
+    def retrieve_from_key(self, key: str) -> np.array:
+        return self.vectors.get(key, None)
+
+    async def abuild_from_list(self, list_of_text: List[str]) -> "SimpleVectorDatabase":
+        embeddings = await self.embedding_model.async_get_embeddings(list_of_text)
+        for text, embedding in zip(list_of_text, embeddings):
+            self.insert(text, np.array(embedding))
+        return self
+
+    async def abuild_from_chunks(self, list_of_chunks: List[Tuple[str, str]]) -> "SimpleVectorDatabase":
+        texts = [text for _, text in list_of_chunks]
+        keys = [key for key, _ in list_of_chunks]
+        embeddings = await self.embedding_model.async_get_embeddings(texts)
+
+        for key, text, embedding in zip(keys, texts, embeddings):
+            self.insert(key, np.array(embedding))
+            self.chunk_texts[key] = text  # Store original chunk
+
+        return self
+
+    async def abuild_from_files(self, file_paths: List[str], chunking: str = "Character") -> "SimpleVectorDatabase":
+        splitter = self._get_splitter(chunking)
+        chunks = []
+
+        for path in file_paths:
+            ext = os.path.splitext(path)[1].lower()
+            if ext == ".pdf":
+                raw = self._extract_pdf(path)
+            elif ext == ".docx":
+                raw = self._extract_docx(path)
+            elif ext == ".csv":
+                raw = self._extract_csv(path)
+            elif ext == ".md":
+                raw = self._extract_md(path)
+            else:
+                print(f"Unsupported file format: {path}")
+                continue
+
+            split_chunks = splitter.split_texts([raw])  # split returns list of strings
+            chunks.extend([
+                (f"{os.path.basename(path)}::chunk_{i}", chunk)
+                for i, chunk in enumerate(split_chunks)
+                if self.is_valid_chunk(chunk)
+            ])
+
+        return await self.abuild_from_chunks(chunks)
+
+    def save_to_sqlite(self, db_path: str, chunking_strategy: str = "Character"):
+        conn = sqlite3.connect(db_path)
+        c = conn.cursor()
+
+        # Create table with chunking_strategy column
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS chunks (
+                key TEXT PRIMARY KEY,
+                vector BLOB,
+                text TEXT,
+                chunking_strategy TEXT
+            )
+        """)
+
+        # Insert or replace records
+        for key in self.vectors:
+            vector_bytes = np.array(self.vectors[key]).astype(np.float32).tobytes()
+            text = self.chunk_texts.get(key, "")
+            c.execute("""
+                REPLACE INTO chunks (key, vector, text, chunking_strategy)
+                VALUES (?, ?, ?, ?)
+            """, (key, vector_bytes, text, chunking_strategy))
+
+        conn.commit()
+        conn.close()
+
+    def load_from_sqlite(self, db_path: str, strategy_filter: str = None):
+        conn = sqlite3.connect(db_path)
+        c = conn.cursor()
+
+        query = "SELECT key, vector, text, chunking_strategy FROM chunks"
+        if strategy_filter:
+            query += " WHERE chunking_strategy = ?"
+            c.execute(query, (strategy_filter,))
+        else:
+            c.execute(query)
+
+        rows = c.fetchall()
+
+        for key, vector_blob, text, _ in rows:
+            vector = np.frombuffer(vector_blob, dtype=np.float32)
+            self.vectors[key] = vector
+            self.chunk_texts[key] = text
+
+        conn.close()
+        return self
+
+
+if __name__ == "__main__":
+    list_of_text = [
+        "I like to eat broccoli and bananas.",
+        "I ate a banana and spinach smoothie for breakfast.",
+        "Chinchillas and kittens are cute.",
+        "My sister adopted a kitten yesterday.",
+        "Look at this cute hamster munching on a piece of broccoli.",
+    ]
+
+    vector_db = SimpleVectorDatabase()
+    vector_db = asyncio.run(vector_db.abuild_from_list(list_of_text))
+    k = 2
+
+    searched_vector = vector_db.search_by_text("I think fruit is awesome!", k=k)
+    print(f"Closest {k} vector(s):", searched_vector)
+
+    retrieved_vector = vector_db.retrieve_from_key(
+        "I like to eat broccoli and bananas."
+    )
+    print("Retrieved vector:", retrieved_vector)
+
+    relevant_texts = vector_db.search_by_text(
+        "I think fruit is awesome!", k=k, return_as_text=True
+    )
+    print(f"Closest {k} text(s):", relevant_texts)
+
+
+
