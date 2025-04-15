@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG System</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>RAG System</h1>
+        </header>
+
+        <section class="upload-section">
+            <h2>Upload Documents</h2>
+            <div class="upload-container">
+                <input type="file" id="documentUpload" multiple>
+                <button id="uploadButton" class="primary-button">Upload</button>
+                <div id="uploadProgress" class="progress-bar hidden">
+                    <div class="progress-fill"></div>
+                </div>
+                <div id="uploadStatus" class="status-message"></div>
+            </div>
+        </section>
+
+        <section class="query-section">
+            <h2>Enter Queries</h2>
+            <div class="query-container">
+                <textarea id="queryInput" rows="5" placeholder="Enter your queries (one per line)"></textarea>
+                <div class="query-controls">
+                    <div class="top-k-control">
+                        <label for="topKInput">Top K Results:</label>
+                        <input type="number" id="topKInput" value="3" min="1" max="10">
+                    </div>
+                    <button id="processButton" class="primary-button">Process Queries</button>
+                </div>
+                <progress id="progressBar" value="0" max="100" style="display: none;"></progress>
+                <div id="statusMessage" class="status-message" style="display: none;"></div>
+            </div>
+        </section>
+
+        <section class="results-section">
+            <h2>Results</h2>
+            <div id="resultsContainer">
+                <!-- Charts and results will be dynamically added here -->
+            </div>
+        </section>
+
+        <!-- Error Modal -->
+        <div id="errorModal" class="modal hidden">
+            <div class="modal-content">
+                <span class="close-button">&times;</span>
+                <h2>Error</h2>
+                <p id="errorMessage"></p>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
