@@ -37,10 +37,13 @@ class FAISSVectorDatabase:
         self.chunk_texts = []  # List to store chunk texts
         self.chunk_mapping = {}  # Dictionary to store chunk metadata
         
-        # Check if index exists
+        self._load_index()
+
+    def _load_index(self):
+        """Load the index from disk"""
         index_path = os.path.join(self.persist_dir, f"faiss_index_{self.search_method.value}.index")
         metadata_path = os.path.join(self.persist_dir, f"faiss_index_{self.search_method.value}_metadata.pkl")
-        
+
         if os.path.exists(index_path) and os.path.exists(metadata_path):
             try:
                 # Load existing index
@@ -52,7 +55,6 @@ class FAISSVectorDatabase:
                 print(f"Warning: Failed to load existing index: {str(e)}")
                 self._initialize_index()
         else:
-            # Initialize new index
             self._initialize_index()
 
     def _initialize_index(self):
@@ -270,35 +272,7 @@ class FAISSVectorDatabase:
         with open(metadata_path, "wb") as f:
             pickle.dump(metadata, f)
 
-    @classmethod
-    def load(
-        cls,
-        name: str,
-        persist_dir: str = "faiss_db",
-        embedding_model: EmbeddingModel = None
-    ) -> "FAISSVectorDatabase":
-        """Load a saved index and metadata"""
-        index_path = os.path.join(persist_dir, f"{name}.index")
-        metadata_path = os.path.join(persist_dir, f"{name}_metadata.pkl")
-
-        if not os.path.exists(index_path) or not os.path.exists(metadata_path):
-            raise FileNotFoundError(f"Index or metadata file not found for {name}")
-
-        index = faiss_db.read_index(index_path)
-        
-        with open(metadata_path, "rb") as f:
-            metadata = pickle.load(f)
-
-        db = cls(
-            embedding_model=embedding_model,
-            dimension=metadata["dimension"],
-            search_method=SearchMethod(metadata["search_method"]),
-            persist_dir=persist_dir
-        )
-        db.index = index
-        db.chunk_texts = metadata["chunk_texts"]
-        
-        return db
+        self._load_index()
 
     def train(self, vectors: np.array) -> None:
         """Train the index if required (e.g., for IVF)"""
@@ -321,14 +295,3 @@ class FAISSVectorDatabase:
         """
         splitter = self._get_splitter(method)
         return splitter.split(text)
-
-    def close(self):
-        """Close the database and save the index"""
-        try:
-            self.save()
-        except Exception as e:
-            print(f"Warning: Failed to save index during close: {str(e)}")
-
-    def __del__(self):
-        """Destructor to ensure proper cleanup"""
-        self.close()
