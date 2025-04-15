@@ -8,12 +8,6 @@ from typing import List, Dict, Optional, Tuple
 from rag_simple_db.simple_db import SimpleVectorDatabase, SimilarityMetric
 from openai_utils.chatmodel import ChatOpenAI
 
-class SimilarityMetric(Enum):
-    COSINE = "cosine"
-    EUCLIDEAN = "euclidean"
-    MANHATTAN = "manhattan"
-    DOT = "dot"
-
 # Custom error types
 class PipelineError(Exception):
     """Base class for pipeline errors"""
@@ -204,7 +198,7 @@ Total length: {total_length} characters
         if len(query.strip()) > 1000:
             raise QueryLengthError("Query too long: must be less than 1000 characters")
 
-    async def run_pipeline(self, query: str, search_method: SimilarityMetric) -> Dict:
+    async def run_pipeline(self, query: str, search_method: SimilarityMetric, top_k: int = 5) -> Dict:
         """Run the RAG pipeline for a given query"""
         start_time = datetime.now()
         error = None
@@ -221,7 +215,7 @@ Total length: {total_length} characters
                 
             # Search for relevant context using search_by_text
             try:
-                search_results = self.vector_db.search_by_text(query, k=5, similarity_metric=search_method.value)
+                search_results = self.vector_db.search_by_text(query, k=top_k, similarity_metric=search_method.value)
             except TimeoutError as e:
                 raise SearchTimeoutError(f"Search operation timed out: {str(e)}")
             except Exception as e:

@@ -84,8 +84,8 @@ class SimpleVectorDatabase:
     def _get_splitter(self, method: str):
         """Get the appropriate text splitter"""
         if method == "Token":
-            return TokenTextSplitter(chunk_size=1000, chunk_overlap=200)
-        return CharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+            return TokenTextSplitter(chunk_size=512, chunk_overlap=100)
+        return CharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
 
     def _clean_text(self, text: str) -> str:
         """Clean text by removing unwanted characters and extra whitespace"""
@@ -313,18 +313,18 @@ class SimpleVectorDatabase:
             
             # Use provided similarity metric or default to class metric
             metric = SimilarityMetric(similarity_metric) if similarity_metric else self.similarity_metric
-            
+
             for key in filtered_keys:
                 score = self._calculate_similarity(query_vector, self.vectors[key], metric)
                 scores.append((key, score))
-            
+
             # Sort by score (higher is better)
             sorted_scores = sorted(scores, key=lambda x: x[1], reverse=True)
             results = sorted_scores[:k]
-            
+
             if not return_scores:
                 return [result[0] for result in results]
-            
+
             # For non-cosine metrics, convert scores to similarity scores (0-1 range)
             if metric != SimilarityMetric.COSINE:
                 min_score = min(score for _, score in results)

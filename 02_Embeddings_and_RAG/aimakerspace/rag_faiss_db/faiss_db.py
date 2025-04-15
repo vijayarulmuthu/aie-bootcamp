@@ -36,7 +36,24 @@ class FAISSVectorDatabase:
         self.index = None
         self.chunk_texts = []  # List to store chunk texts
         self.chunk_mapping = {}  # Dictionary to store chunk metadata
-        self._initialize_index()
+        
+        # Check if index exists
+        index_path = os.path.join(self.persist_dir, f"faiss_index_{self.search_method.value}.index")
+        metadata_path = os.path.join(self.persist_dir, f"faiss_index_{self.search_method.value}_metadata.pkl")
+        
+        if os.path.exists(index_path) and os.path.exists(metadata_path):
+            try:
+                # Load existing index
+                self.index = faiss_db.read_index(index_path)
+                with open(metadata_path, "rb") as f:
+                    metadata = pickle.load(f)
+                    self.chunk_texts = metadata["chunk_texts"]
+            except Exception as e:
+                print(f"Warning: Failed to load existing index: {str(e)}")
+                self._initialize_index()
+        else:
+            # Initialize new index
+            self._initialize_index()
 
     def _initialize_index(self):
         """Initialize the FAISS index based on the selected search method"""
@@ -203,16 +220,16 @@ class FAISSVectorDatabase:
     def search(
         self,
         query_vector: np.array,
-        k: int = 5,
+        top_k: int = 5,
         return_as_text: bool = False
-    ) -> Union[List[Tuple[str, float]], List[str]]:
+    ) -> List[Tuple[str, float]]:
         """Search for similar vectors"""
         if not isinstance(query_vector, np.ndarray):
             query_vector = np.array(query_vector, dtype=np.float32)
         if query_vector.ndim == 1:
             query_vector = query_vector.reshape(1, -1)
 
-        distances, indices = self.index.search(query_vector, k)
+        distances, indices = self.index.search(query_vector, top_k)
         
         if return_as_text:
             return [list(self.chunk_texts)[idx] for idx in indices[0]]
@@ -226,12 +243,12 @@ class FAISSVectorDatabase:
     def search_by_text(
         self,
         query_text: str,
-        k: int = 5,
+        top_k: int = 5,
         return_as_text: bool = False
-    ) -> Union[List[Tuple[str, float]], List[str]]:
+    ) -> List[Tuple[str, float]]:
         """Search using text query"""
         query_vector = self.embedding_model.get_embedding(query_text)
-        return self.search(query_vector, k, return_as_text)
+        return self.search(query_vector, top_k, return_as_text)
 
     def save(self, name: str = None) -> None:
         """Save the index and metadata to disk"""

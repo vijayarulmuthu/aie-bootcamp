@@ -162,8 +162,15 @@ class RAGPipelineFAISSDB:
         filtered_results = []
         scores = []
         total_chunks = len(search_results)
-        
-        for i, (text, score) in enumerate(search_results, 1):
+
+        for i, result in enumerate(search_results, 1):
+            # Handle both (text, score) tuples and plain text results
+            if isinstance(result, tuple):
+                text, score = result
+            else:
+                text = result
+                score = 1.0  # Default score for plain text results
+                
             if score >= min_score:
                 formatted_chunk = self._format_context_chunk(text, score, i, total_chunks)
                 if formatted_chunk:
@@ -189,7 +196,7 @@ Total length: {total_length} characters
         context = header + "\n".join(filtered_results)
         return context, scores
 
-    async def run_pipeline(self, query: str, search_method: SearchMethod) -> Dict:
+    async def run_pipeline(self, query: str, search_method: SearchMethod, top_k: int = 3) -> Dict:
         """Run the RAG pipeline for a given query"""
         start_time = datetime.now()
         error = None
@@ -211,7 +218,10 @@ Total length: {total_length} characters
                 
             # Search for relevant context using search_by_text
             try:
-                search_results = self.vector_db.search_by_text(query, k=3)
+                search_results = self.vector_db.search_by_text(
+                    query_text=query,
+                    top_k=top_k
+                )
             except TimeoutError as e:
                 raise SearchTimeoutError(f"Search operation timed out: {str(e)}")
             except Exception as e:
