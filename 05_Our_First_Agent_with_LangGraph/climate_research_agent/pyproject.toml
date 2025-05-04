@@ -1,0 +1,26 @@
+[project]
+name = "climate-research-agent"
+version = "0.1.0"
+description = "An agentic research assistant on climate change using LangGraph, LangChain, and Chainlit."
+authors = [
+    { name = "Vijay Arulmuthu", email = "vijay.arulmuthu@gmail.com" }
+]
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "langchain",
+    "langgraph",
+    "langchain-openai",
+    "langchain-community",
+    "chainlit",
+    "tavily-python",
+    "wikipedia",
+    "arxiv",
+    "python-dotenv"
+]
+
+[tool.setuptools]
+packages = ["climate_research_agent"]
+
+[tool.chainlit]
+run = "chainlit_app.py"

@@ -1,1 +1,6 @@
+.DS_Store
+.chainlit
+.files
+.venv
 .env
+**/*.pyc
