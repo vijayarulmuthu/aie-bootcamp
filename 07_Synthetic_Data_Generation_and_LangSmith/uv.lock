@@ -27,7 +27,7 @@ requires-dist = [
     { name = "langgraph", specifier = ">=0.2.69" },
     { name = "nltk", specifier = "==3.8.1" },
     { name = "numpy", specifier = ">=2.2.2" },
-    { name = "ragas", specifier = "==0.2.10" },
+    { name = "ragas", specifier = ">=0.2.10" },
     { name = "unstructured", specifier = ">=0.14.8" },
 ]
 
